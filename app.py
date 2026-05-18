@@ -35,11 +35,12 @@ def _pip_install(*packages):
 
 
 def ensure_dependencies():
-    """Instala yt-dlp e imageio[ffmpeg] se necessario."""
     if importlib.util.find_spec("yt_dlp") is None:
         _pip_install("yt-dlp")
     if importlib.util.find_spec("imageio_ffmpeg") is None:
         _pip_install("imageio[ffmpeg]")
+    if importlib.util.find_spec("requests") is None:
+        _pip_install("requests")
 
 
 def get_ffmpeg_path() -> str:
@@ -260,6 +261,19 @@ class App(tk.Tk):
         if self._status_label:
             self._status_label.config(fg=color)
 
+    def _buscar_frase(self):
+        import requests
+        try:
+
+            resposta = requests.get("https://api.adviceslip.com/advice", timeout=5)
+            if resposta.status_code == 200:
+                dados = resposta.json()
+            return dados['slip']['advice']
+        except Exception as e:
+            print(f"Erro na API: {e}")
+
+        return "Respire fundo, o download já vai começar!"
+
     def _start_download(self):
         url = self.url_var.get().strip()
         if not url:
@@ -279,6 +293,7 @@ class App(tk.Tk):
 
     def _download_worker(self, url: str):
         try:
+            self.frase_atual = self._buscar_frase()
             # FFmpeg
             ensure_dependencies()
             ffmpeg_path = get_ffmpeg_path()
@@ -292,27 +307,35 @@ class App(tk.Tk):
                 fmt = "bestaudio/best"
                 post = [{"key": "FFmpegExtractAudio",
                          "preferredcodec": "mp3", "preferredquality": "192"}]
-            elif quality == "best":
-                fmt = "bestvideo+bestaudio/best"
-                post = [{"key": "FFmpegVideoConvertor",
-                        "preferedformat": "mp4"}]
+                ydl_opts = {
+                    "format": fmt,
+                    "outtmpl": str(dl_dir / "%(title)s.%(ext)s"),
+                    "postprocessors": post,
+                    "progress_hooks": [self._progress_hook],
+                    "ffmpeg_location": ffmpeg_path,
+                    "quiet": True,
+                    "no_warnings": True,
+                }
             else:
-                fmt = (f"bestvideo[height<={quality}][ext=mp4]+"
-                       f"bestaudio[ext=m4a]/"
-                       f"bestvideo[height<={quality}]+bestaudio/best")
-                post = [{"key": "FFmpegVideoConvertor",
-                        "preferedformat": "mp4"}]
+                if quality == "best":
+                    fmt = "best*[vcodec!=none][acodec!=none]/bestvideo*+bestaudio/best"
+                else:
+                    fmt = (f"best[height<={quality}][vcodec!=none][acodec!=none]/"
+                           f"bestvideo[height<={quality}]+bestaudio/best")
 
-            ydl_opts = {
-                "format": fmt,
-                "outtmpl": str(dl_dir / "%(title)s.%(ext)s"),
-                "postprocessors": post,
-                "progress_hooks": [self._progress_hook],
-                "ffmpeg_location": ffmpeg_path,
-                "merge_output_format": "mp4",
-                "quiet": True,
-                "no_warnings": True,
-            }
+                ydl_opts = {
+                    "format": fmt,
+                    "outtmpl": str(dl_dir / "%(title)s.%(ext)s"),
+                    "postprocessors": [],
+                    "progress_hooks": [self._progress_hook],
+                    "ffmpeg_location": ffmpeg_path,
+                    "merge_output_format": "mp4",
+                    "quiet": True,
+                    "no_warnings": True,
+                    "postprocessor_args": {
+                        "merger+ffmpeg": ["-c", "copy", "-movflags", "+faststart"],
+                    },
+                }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -329,7 +352,7 @@ class App(tk.Tk):
             speed = d.get("_speed_str", "").strip()
             eta = d.get("_eta_str", "").strip()
             self.after(0, self._set_status,
-                       f"{pct}  |  {speed}  |  ETA {eta}", MUTED)
+                       f"{pct}  |  {speed}  |  ETA {eta}\n💡 Dica: {getattr(self, 'frase_atual', '')}", MUTED)
 
     def _on_success(self, title: str):
         self._reset_btn()
