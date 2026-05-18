@@ -1,6 +1,7 @@
+Link da Aplicação: [https://github.com/Satheuss/ytdown/blob/main/app.py]
 YTDown - Youtube Video Downloader
 
-Versão: 1.0.0  
+Versão: 1.0.1  
 Autor: Matheus Sousa
 Repositório: [https://github.com/Satheuss]
 
